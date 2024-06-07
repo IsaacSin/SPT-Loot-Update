@@ -6,127 +6,39 @@ import { DependencyContainer } from "tsyringe";
 import { DatabaseServer } from "@spt-aki/servers/DatabaseServer";
 import { IDatabaseTables } from "@spt-aki/models/spt/server/IDatabaseTables";
 import { IPostDBLoadMod } from "@spt-aki/models/external/IPostDBLoadMod";
-import { IPreAkiLoadMod } from "@spt-aki/models/external/IPreAkiLoadMod";
 import { JsonUtil } from "@spt-aki/utils/JsonUtil";
 import { ILocation } from "@spt-aki/models/eft/common/ILocation";
-import { Spawnpoint } from "@spt-aki/models/eft/common/ILooseLoot";
-import { IStaticAmmoDetails } from "@spt-aki/models/eft/common/tables/ILootBase";
-import { IContainerItem, LocationGenerator } from "@spt-aki/generators/LocationGenerator";
-import { Item } from "@spt-aki/models/eft/common/tables/IItem";
-import { ConfigServer } from "@spt-aki/servers/ConfigServer";
-import { ItemHelper } from "@spt-aki/helpers/ItemHelper";
-import { RandomUtil } from "@spt-aki/utils/RandomUtil";
-import { ObjectId } from "@spt-aki/utils/ObjectId";
-import { ILocationConfig } from "@spt-aki/models/spt/config/ILocationConfig";
 import { ILogger } from "@spt-aki/models/spt/utils/ILogger";
-import { ConfigTypes } from "@spt-aki/models/enums/ConfigTypes";
-import { BaseClasses } from "@spt-aki/models/enums/BaseClasses";
 import { LogTextColor } from "@spt-aki/models/spt/logging/LogTextColor";
 
-class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
-    private static container: DependencyContainer;
-    reparentItemAndChildren: (itemWithChildren: Item[], newId?: string) => void;
-    private objectId: ObjectId;
+class Mod implements IPostDBLoadMod {
     private database: IDatabaseTables;
     private jsonUtil: JsonUtil;
     private logger: ILogger;
+    private newItemBlacklist: string[];
 
-    public preAkiLoad(container: DependencyContainer): void {
-        Mod.container = container;
-
-        container.afterResolution("LocationGenerator", (_t, result: LocationGenerator) => {
-            this.reparentItemAndChildren = result.reparentItemAndChildren;
-            result.createDynamicLootItem = (chosenComposedKey: string, spawnPoint: Spawnpoint, staticAmmoDist: Record<string, IStaticAmmoDetails[]>) => {
-                return this.replacementFunction(chosenComposedKey, spawnPoint, staticAmmoDist);
-            }
-        }, {frequency: "Always"});
-    }
-	
     public postDBLoad(container: DependencyContainer): void {
-        Mod.container = container;
-        
-        this.database = Mod.container.resolve<DatabaseServer>("DatabaseServer").getTables();
-        this.jsonUtil = Mod.container.resolve<JsonUtil>("JsonUtil");
-        this.logger = Mod.container.resolve<ILogger>("WinstonLogger");
+
+        this.database = container.resolve<DatabaseServer>("DatabaseServer").getTables();
+        this.jsonUtil = container.resolve<JsonUtil>("JsonUtil");
+        this.logger = container.resolve<ILogger>("WinstonLogger");
+
+        this.newItemBlacklist = [
+            "6614217b6d9d5abcad0ff098", // The Unheard's phone - "q_item_phone_unknown"
+            "6614230055afee107f05e998", // The Unheard's phone - "q_item_phone_unknown_2"
+            "661421c7c1f2f548c50ee649", // The Unheard's laptop - "q_item_toughbook_quest_arr_unknown"
+            "661423200d240a5f5d0f679b", // The Unheard's laptop - "q_item_toughbook_quest_arr_2"
+            "660bbc47c38b837877075e47", // Encrypted flash drive - "item_flash_card_encrypted"
+            "6614238e0d240a5f5d0f679d", // Skier and Peacekeeper correspondence - "item_quest_letter_dialog"
+            "661666458c2aa9cb1602503b", // Hard drive - "q_item_disk_quest_arr"
+            "66015072e9f84d5680039678", // 20x1mm toy gun - "weapon_ussr_pd_20x1mm"
+            "6601546f86889319850bd566", // 20x1mm disk - "patron_20x1mm"
+            "66015dc4aaad2f54cb04c56a", // Toy gun 20x1mm 20-round magazine - "mag_pd_ussr_toygun_std_20x1mm_18"
+            "66507eabf5ddb0818b085b68"  // 2A2-(b-TG) stimulant injector - "2A2-(b-TG)"
+        ]
 
         this.backportLootChanges();
         this.logger.log("Loot Updated. Have a nice day.", LogTextColor.MAGENTA);
-    }
-
-    public replacementFunction(chosenComposedKey: string, spawnPoint: Spawnpoint, staticAmmoDist: Record<string, IStaticAmmoDetails[]>): IContainerItem {
-        const configServer = Mod.container.resolve<ConfigServer>("ConfigServer");
-        const itemHelper = Mod.container.resolve<ItemHelper>("ItemHelper");
-        const randomUtil = Mod.container.resolve<RandomUtil>("RandomUtil");
-        const objectId = Mod.container.resolve<ObjectId>("ObjectId");
-        this.objectId = objectId;
-        const locationConfig: ILocationConfig = configServer.getConfig(ConfigTypes.LOCATION);
-        
-
-        const chosenItem = spawnPoint.template.Items.find((item) => item._id === chosenComposedKey);
-        const chosenTpl = chosenItem?._tpl;
-        if (!chosenTpl) {
-            throw new Error(`Item for tpl ${chosenComposedKey} was not found in the spawn point`);
-        }
-        const itemTemplate = itemHelper.getItem(chosenTpl)[1];
-
-        // Item array to return
-        const itemWithMods: Item[] = [];
-
-        // Money/Ammo - don't rely on items in spawnPoint.template.Items so we can randomise it ourselves
-        if (itemHelper.isOfBaseclasses(chosenTpl, [BaseClasses.MONEY, BaseClasses.AMMO])) {
-            const stackCount
-                = itemTemplate._props.StackMaxSize === 1
-                    ? 1
-                    : randomUtil.getInt(itemTemplate._props.StackMinRandom!, itemTemplate._props.StackMaxRandom!);
-
-            itemWithMods.push({
-                _id: objectId.generate(),
-                _tpl: chosenTpl,
-                upd: { StackObjectsCount: stackCount }
-            });
-        }
-        else if (itemHelper.isOfBaseclass(chosenTpl, BaseClasses.AMMO_BOX)) {
-            // Fill with cartridges
-            const ammoBoxItem: Item[] = [{ _id: objectId.generate(), _tpl: chosenTpl }];
-            itemHelper.addCartridgesToAmmoBox(ammoBoxItem, itemTemplate);
-            itemWithMods.push(...ammoBoxItem);
-        }
-        else if (itemHelper.isOfBaseclass(chosenTpl, BaseClasses.MAGAZINE)) {
-            // Create array with just magazine
-            const magazineItem: Item[] = [{ _id: objectId.generate(), _tpl: chosenTpl }];
-
-            if (randomUtil.getChance100(locationConfig.staticMagazineLootHasAmmoChancePercent)) {
-                // Add randomised amount of cartridges
-                itemHelper.fillMagazineWithRandomCartridge(
-                    magazineItem,
-                    itemTemplate, // Magazine template
-                    staticAmmoDist,
-                    undefined,
-                    locationConfig.minFillLooseMagazinePercent / 100
-                );
-            }
-
-            itemWithMods.push(...magazineItem);
-        }
-        else {
-            // Also used by armors to get child mods
-            // Get item + children and add into array we return
-            const itemWithChildren = itemHelper.findAndReturnChildrenAsItems(
-                spawnPoint.template.Items,
-                chosenItem._id
-            );
-
-            // We need to reparent to ensure ids are unique
-            this.reparentItemAndChildren(itemWithChildren);
-
-            itemWithMods.push(...itemWithChildren);
-        }
-
-        // Get inventory size of item
-        const size = itemHelper.getItemSize(itemWithMods, itemWithMods[0]._id);
-        //this.logger.log("You're cute <3", LogTextColor.MAGENTA);
-
-        return { items: itemWithMods, width: size.width, height: size.height };
     }
 
     public backportLootChanges(): void {
@@ -146,10 +58,30 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         for (const arr of locations) {
             const location: ILocation = this.database.locations[arr[1]];
             location.looseLoot = this.jsonUtil.deserialize(fs.readFileSync(`${dbPath}/${arr[1]}/looseLoot.json`, "utf-8"));
+            this.blacklistLooseLoot(location);
+            
             this.database.loot.staticContainers[arr[0]] = this.jsonUtil.deserialize(fs.readFileSync(`${dbPath}/${arr[1]}/staticContainers.json`, "utf-8"));
         }
         // Factory day/night share static containers, but not loose loot.
-        this.database.locations.factory4_night.looseLoot = this.jsonUtil.deserialize(fs.readFileSync(`${dbPath}/factory4_night/looseLoot.json`, "utf-8"));
+        const nightFactory = this.database.locations.factory4_night;
+        nightFactory.looseLoot = this.jsonUtil.deserialize(fs.readFileSync(`${dbPath}/factory4_night/looseLoot.json`, "utf-8"));
+        this.blacklistLooseLoot(nightFactory);
+    }
+
+    public blacklistLooseLoot(location: ILocation): void {
+        location.looseLoot.spawnpointsForced = location.looseLoot.spawnpointsForced.filter(goodSpawn => 
+            // Check all entries of Items
+            goodSpawn.template.Items.find(item => 
+                this.newItemBlacklist.includes(item._tpl)
+            // If find(...) === undefined then none of the items matched the blacklist.
+            ) === undefined
+        )
+
+        for (const spawnPoint of location.looseLoot.spawnpoints) {
+            spawnPoint.itemDistribution = spawnPoint.itemDistribution.filter(goodItemDist =>
+                !(this.newItemBlacklist.includes(spawnPoint.template.Items.find(item => item._id === goodItemDist.composedKey.key)._tpl))
+            )
+        }
     }
 }
 

@@ -231,7 +231,7 @@ function createProjectName(packageJson, includeVersion) {
     const name = packageJson.name.replace(/\W/g, "");
     const version = packageJson.version;
 
-    return includeVersion ? `${author}-${name}-${version}` : `${author}-${name}`;
+    return includeVersion ? `${author}-${name}-${version}` : `aaa_${author}-${name}`;
 }
 
 /**
