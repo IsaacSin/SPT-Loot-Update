@@ -36,7 +36,6 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
     private dbPath = path.resolve(__dirname, "../db");
 
     public preAkiLoad(container: DependencyContainer): void {
-        const logger = container.resolve<ILogger>("WinstonLogger");
         const jsonUtil = container.resolve<JsonUtil>("JsonUtil");
         this.config = jsonUtil.deserialize(fs.readFileSync(this.configPath, "utf-8"), "config.json");
         if (this.config.changeStaticLoot) {
@@ -45,7 +44,6 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
                     return this.generateStaticContainers(locationBase, staticAmmoDist);
                 }
             }, { frequency: "Always" });
-            logger.log("[Loot Update] Static loot will be updated.", LogTextColor.MAGENTA);
         }
     }
 
@@ -84,14 +82,11 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
 
         this.fixGivingTree();
         this.updateLoot();
-        /*
-        for (const spawnPoint of this.database.locations.bigmap.looseLoot.spawnpoints) {
-            if ( spawnPoint.template.Id.includes("Loot 19 (8)") || spawnPoint.template.Id.includes("Loot 19 (9)")) {
-                this.logger.info(this.jsonUtil.serialize(spawnPoint, true));
-            }
+        
+        if (this.config.changeStaticLoot) {
+            this.logger.log("[Loot Update] Static loot lists generated.", LogTextColor.MAGENTA);
         }
-        */
-        this.logger.log("[Loot Update] Loose loot updated. Have a nice day.", LogTextColor.MAGENTA);
+        this.logger.log("[Loot Update] Loot updated. Have a nice day <3", LogTextColor.MAGENTA);
     }
 
     public fixGivingTree(): void {
@@ -118,7 +113,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
 
             // Generate staticLootDist list
             if (this.config.changeStaticLoot) {
-                this.updateStaticLoot();
+                this.loadStaticLoot();
             }
         }
     }
@@ -134,7 +129,6 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
 
         // For spawnPoint we remove the individual itemDist for the blacklisted item because spawnPoints are often shared between many different items.
         for (const spawnPoint of location.looseLoot.spawnpoints) {
-            //this.logger.info(`Before blacklist there are ${spawnPoint.template.Items.length} template.Items and ${spawnPoint.itemDistribution.length} itemDistributions for spawnPoint ${spawnPoint.template.Id}`);
             spawnPoint.itemDistribution = spawnPoint.itemDistribution.filter(goodItemDist =>
                 // itemDist contains a composedKey that matches a template.Items entry. We need to get the Item to compare tpl to blacklist.
                 !(this.futureItemBlacklist.includes(spawnPoint.template.Items.find(item => 
@@ -147,34 +141,18 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
                 !(this.futureItemBlacklist.includes(goodItem._tpl))
             )
             */
-            //this.logger.info(`After blacklist there are ${spawnPoint.template.Items.length} template.Items and ${spawnPoint.itemDistribution.length} itemDistributions for spawnPoint ${spawnPoint.template.Id}`);
         }
     }
 
-    public updateStaticLoot(): void {
+    public loadStaticLoot(): void {
         this.staticLootDists = new Map<string, Record<string, IStaticLootDetails>>();
         for (const arr of this.locations) {
             const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${arr[1]}/staticLoot.json`, "utf-8"), `${arr[1]}/staticLoot.json`);
             for (const containerTypeId in staticLootDist) {
-                /*
-                for (const itemDist of staticLootDist[containerTypeId].itemDistribution) {
-                    if (this.futureItemBlacklist.includes(itemDist.tpl)) {
-                        this.logger.log(`Found ${itemDist.tpl} in blacklist. Should get removed.`, LogTextColor.MAGENTA);
-                    }
-                }
-                */
                 staticLootDist[containerTypeId].itemDistribution = staticLootDist[containerTypeId].itemDistribution.filter(goodItems => 
                     !(this.futureItemBlacklist.includes(goodItems.tpl))
                 )
-                /*
-                for (const itemDist of staticLootDist[containerTypeId].itemDistribution) {
-                    if (this.futureItemBlacklist.includes(itemDist.tpl)) {
-                        this.logger.log(`Found ${itemDist.tpl} in blacklist AFTER filtering. Something is broken.`, LogTextColor.MAGENTA);
-                    }
-                }
-                */
             }
-            //this.logger.log(this.jsonUtil.serialize(this.staticLootDists, true), LogTextColor.MAGENTA);
             this.staticLootDists.set(arr[1], staticLootDist);
         }
     }
@@ -186,7 +164,6 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         const locationConfig: ILocationConfig = configServer.getConfig(ConfigTypes.LOCATION);
         const randomUtil = Mod.container.resolve<RandomUtil>("RandomUtil");
         const localisationService = Mod.container.resolve<LocalisationService>("LocalisationService");
-        //const logger = Mod.container.resolve<ILogger>("WinstonLogger");
         this.logger.log("[Loot Update] Generating static containers.", LogTextColor.MAGENTA);
 
 
