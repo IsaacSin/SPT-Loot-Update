@@ -65,6 +65,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         this.locations.set("Lighthouse", "lighthouse");
         this.locations.set("Streets of Tarkov", "tarkovstreets");
         this.locations.set("Sandbox", "sandbox");
+        this.staticLootDists = new Map<string, Record<string, IStaticLootDetails>>();
 
         this.futureItemBlacklist = [
             "6614217b6d9d5abcad0ff098", // The Unheard's phone - "q_item_phone_unknown"
@@ -99,21 +100,23 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
 
     public updateLoot(): void {
         for (const arr of this.locations) {
-            const location: ILocation = this.database.locations[arr[1]];
+            const locationName: string = arr[0];
+            const locationId: string = arr[1];
+            const location: ILocation = this.database.locations[locationId];
 
             // Update loose loot
-            location.looseLoot = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${arr[1]}/looseLoot.json`, "utf-8"));
+            location.looseLoot = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${locationId}/looseLoot.json`, "utf-8"));
             this.blacklistLooseLoot(location);
             
             // Update static containers
             // Don't set static containers for Factory night because it's shared with Factory day.
-            if (arr[0] != "FactoryNight") {
-                this.database.loot.staticContainers[arr[0]] = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${arr[1]}/staticContainers.json`, "utf-8"));
+            if (locationName != "FactoryNight") {
+                this.database.loot.staticContainers[locationName] = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${locationId}/staticContainers.json`, "utf-8"));
             }
 
             // Generate staticLootDist list
             if (this.config.changeStaticLoot) {
-                this.loadStaticLoot();
+                this.loadStaticLoot(locationId);
             }
         }
     }
@@ -144,17 +147,16 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         }
     }
 
-    public loadStaticLoot(): void {
-        this.staticLootDists = new Map<string, Record<string, IStaticLootDetails>>();
-        for (const arr of this.locations) {
-            const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${arr[1]}/staticLoot.json`, "utf-8"), `${arr[1]}/staticLoot.json`);
-            for (const containerTypeId in staticLootDist) {
-                staticLootDist[containerTypeId].itemDistribution = staticLootDist[containerTypeId].itemDistribution.filter(goodItems => 
-                    !(this.futureItemBlacklist.includes(goodItems.tpl))
-                )
-            }
-            this.staticLootDists.set(arr[1], staticLootDist);
+    public loadStaticLoot(locationId: string): void {
+        const location: ILocation = this.database.locations[locationId];
+        const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${locationId}/staticLoot.json`, "utf-8"), `${locationId}/staticLoot.json`);
+        for (const containerTypeId in staticLootDist) {
+            staticLootDist[containerTypeId].itemDistribution = staticLootDist[containerTypeId].itemDistribution.filter(goodItems => 
+                !(this.futureItemBlacklist.includes(goodItems.tpl))
+            )
         }
+        // location.base.Id uses different capitalization than the file path ids.
+        this.staticLootDists.set(location.base.Id, staticLootDist);
     }
 
     public generateStaticContainers(locationBase: ILocationBase, staticAmmoDist: Record<string, IStaticAmmoDetails[]>): SpawnpointTemplate[] {
