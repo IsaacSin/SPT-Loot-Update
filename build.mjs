@@ -117,6 +117,13 @@ async function main() {
         await copyFiles(currentDir, projectDir, buildIgnorePatterns);
         logger.log("success", "Files successfully copied to temporary directory.");
 
+        // Copy files to dev mod directory.
+        const devModDir = `C:/Games/SPT Mods/Dev/user/mods/${projectName}`;
+        logger.log("info", `Copying build to test directory ${devModDir}`);
+        await fs.remove(devModDir);
+        await copyFiles(currentDir, devModDir, buildIgnorePatterns);
+        logger.log("success", "Test directory successfully populated.");
+
         // Create a zip archive of the project files.
         logger.log("info", "Beginning folder compression...");
         const zipFilePath = path.join(path.dirname(projectDir), `${projectName}.zip`);
@@ -138,7 +145,7 @@ async function main() {
         logger.log("success", "------------------------------------");
         logger.log("success", "Build script completed successfully!");
         logger.log("success", "Your mod package has been created in the 'dist' directory:");
-        logger.log("success", `/${path.relative(process.cwd(), path.join(distDir, `${projectNameVer}.zip`))}`);
+        logger.log("success", `${path.relative(process.cwd(), path.join(distDir, `${projectNameVer}.zip`))}`);
         logger.log("success", "------------------------------------");
         if (!verbose) {
             logger.log("success", "To see a detailed build log, use `npm run buildinfo`.");
