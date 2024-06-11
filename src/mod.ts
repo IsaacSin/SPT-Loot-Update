@@ -80,7 +80,16 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             "66015072e9f84d5680039678", // 20x1mm toy gun - "weapon_ussr_pd_20x1mm"
             "6601546f86889319850bd566", // 20x1mm disk - "patron_20x1mm"
             "66015dc4aaad2f54cb04c56a", // Toy gun 20x1mm 20-round magazine - "mag_pd_ussr_toygun_std_20x1mm_18"
-            "66507eabf5ddb0818b085b68"  // 2A2-(b-TG) stimulant injector - "2A2-(b-TG)"
+            "66507eabf5ddb0818b085b68", // 2A2-(b-TG) stimulant injector - "2A2-(b-TG)"
+            "664a5775f3d3570fba06be64", // Bison VS Undertaker poster pack. - "quest_flyers"
+            "664b69c5a082271bc46c4e11", // A pack of Killa and Tagilla posters. - "quest_flyers2"
+            "664b69e8e1238e506d3630af", // A pack of 'Easy money on betting' posters - "quest_flyers3"
+            "664b69f3a082271bc46c4e13", // quest_flyers4 - "quest_flyers4"
+            "664d4b0103ef2c61246afb56", // Dorm overseer key - "Arena_champ_key"
+            "664d3db6db5dea2bad286955", // Shatun's hideout - "Arena_woods_key1"
+            "664d3dd590294949fe2d81b7", // Grumpy's hideout key - "Arena_interchange_key2"
+            "664d3ddfdda2e85aca370d75", // Voron's hideout key - "Arena_shoreline_key3"
+            "664d3de85f2355673b09aed5"  // Leon's hideout key - "Arena_lighthouse_key4"
         ]
 
         this.fixGivingTree();
