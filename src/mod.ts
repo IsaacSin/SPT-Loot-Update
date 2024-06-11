@@ -31,6 +31,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
     private futureItemBlacklist: string[];
     private config: {changeStaticLoot: boolean};
     private locations: Map<string, string>;
+    private staticAmmoDists: Map<string, Record<string, IStaticAmmoDetails[]>>;
     private staticLootDists: Map<string, Record<string, IStaticLootDetails>>;
     private configPath = path.resolve(__dirname, "../config/config.json");
     private dbPath = path.resolve(__dirname, "../db");
@@ -65,6 +66,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         this.locations.set("Lighthouse", "lighthouse");
         this.locations.set("Streets of Tarkov", "tarkovstreets");
         this.locations.set("Sandbox", "sandbox");
+        this.staticAmmoDists = new Map<string, Record<string, IStaticAmmoDetails[]>>();
         this.staticLootDists = new Map<string, Record<string, IStaticLootDetails>>();
 
         this.futureItemBlacklist = [
@@ -111,7 +113,9 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             // Update static containers
             // Don't set static containers for Factory night because it's shared with Factory day.
             if (locationName != "FactoryNight") {
-                this.database.loot.staticContainers[locationName] = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${locationId}/staticContainers.json`, "utf-8"));
+                this.database.loot.staticContainers[locationName] = this.jsonUtil.deserialize(
+                    fs.readFileSync(`${this.dbPath}/${locationId}/staticContainers.json`, "utf-8")
+                );
             }
 
             // Generate staticLootDist list
@@ -130,7 +134,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             ) === undefined
         )
 
-        // For spawnPoint we remove the individual itemDist for the blacklisted item because spawnPoints are often shared between many different items.
+        // For spawnPoint we remove the individual itemDist for the blacklisted item because spawnPoints are often shared.
         for (const spawnPoint of location.looseLoot.spawnpoints) {
             spawnPoint.itemDistribution = spawnPoint.itemDistribution.filter(goodItemDist =>
                 // itemDist contains a composedKey that matches a template.Items entry. We need to get the Item to compare tpl to blacklist.
@@ -149,7 +153,20 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
 
     public loadStaticLoot(locationId: string): void {
         const location: ILocation = this.database.locations[locationId];
-        const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(fs.readFileSync(`${this.dbPath}/${locationId}/staticLoot.json`, "utf-8"), `${locationId}/staticLoot.json`);
+        const staticAmmoDist: Record<string, IStaticAmmoDetails[]> = this.jsonUtil.deserialize(
+            fs.readFileSync(`${this.dbPath}/${locationId}/staticAmmo.json`, "utf-8"), `${locationId}/staticAmmo.json`
+        );
+        for (const caliber in staticAmmoDist) {
+            staticAmmoDist[caliber] = staticAmmoDist[caliber].filter(goodItems => 
+                !(this.futureItemBlacklist.includes(goodItems.tpl))
+            )
+        }
+        // location.base.Id uses different capitalization than the file path ids.
+        this.staticAmmoDists.set(location.base.Id, staticAmmoDist);
+
+        const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(
+            fs.readFileSync(`${this.dbPath}/${locationId}/staticLoot.json`, "utf-8"), `${locationId}/staticLoot.json`
+        );
         for (const containerTypeId in staticLootDist) {
             staticLootDist[containerTypeId].itemDistribution = staticLootDist[containerTypeId].itemDistribution.filter(goodItems => 
                 !(this.futureItemBlacklist.includes(goodItems.tpl))
@@ -167,6 +184,9 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         const randomUtil = Mod.container.resolve<RandomUtil>("RandomUtil");
         const localisationService = Mod.container.resolve<LocalisationService>("LocalisationService");
         this.logger.log("[Loot Update] Generating static containers.", LogTextColor.MAGENTA);
+
+        // staticAmmoDist gets passed in, but we just overwrite it here to avoid having to patch a separate method. 
+        staticAmmoDist = this.staticAmmoDists.get(locationBase.Id);
 
 
         let staticLootItemCount = 0;
