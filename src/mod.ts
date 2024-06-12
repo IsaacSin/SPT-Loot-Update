@@ -89,7 +89,8 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             "664d3db6db5dea2bad286955", // Shatun's hideout - "Arena_woods_key1"
             "664d3dd590294949fe2d81b7", // Grumpy's hideout key - "Arena_interchange_key2"
             "664d3ddfdda2e85aca370d75", // Voron's hideout key - "Arena_shoreline_key3"
-            "664d3de85f2355673b09aed5"  // Leon's hideout key - "Arena_lighthouse_key4"
+            "664d3de85f2355673b09aed5", // Leon's hideout key - "Arena_lighthouse_key4"
+            "664fce7a90294949fe2d81cb"  // Probably "Compromising information on Ref" - "Item_barter_info_host_quest"
         ]
 
         this.fixGivingTree();
@@ -151,12 +152,11 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
                     item._id === goodItemDist.composedKey.key)._tpl)
                 )
             )
-            /*
-            // Remove actual item entries, unnecessary unless it influences the randomization. 
-            spawnPoint.template.Items = spawnPoint.template.Items.filter(goodItem => 
-                !(this.futureItemBlacklist.includes(goodItem._tpl))
-            )
-            */
+            // Empty itemDist doesn't stop spawning if IsAlwaysSpawn. Removing spawnPoint would require another loop/filter.
+            // This will prevent spawning without significant overhead.
+            if ( spawnPoint.itemDistribution.length === 0) {
+                spawnPoint.template.IsAlwaysSpawn = false;
+            }
         }
     }
 
