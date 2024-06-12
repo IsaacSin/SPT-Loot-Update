@@ -21,6 +21,9 @@ import { ILocationConfig } from "@spt-aki/models/spt/config/ILocationConfig";
 import { ILootConfig } from "@spt-aki/models/spt/config/ILootConfig";
 import { LocalisationService } from "@spt-aki/services/LocalisationService";
 import { RandomUtil } from "@spt-aki/utils/RandomUtil";
+import { ItemHelper } from "@spt-aki/helpers/ItemHelper";
+import { Item } from "@spt-aki/models/eft/common/tables/IItem";
+import { ITemplateItem } from "@spt-aki/models/eft/common/tables/ITemplateItem";
 
 class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
     private static container: DependencyContainer;
@@ -31,6 +34,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
     private futureItemBlacklist: string[];
     private config: {changeStaticLoot: boolean};
     private locations: Map<string, string>;
+    //private statics: Map<string, IStaticContainer>;
     private staticAmmoDists: Map<string, Record<string, IStaticAmmoDetails[]>>;
     private staticLootDists: Map<string, Record<string, IStaticLootDetails>>;
     private configPath = path.resolve(__dirname, "../config/config.json");
@@ -43,6 +47,26 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             container.afterResolution("LocationGenerator", (_t, result: LocationGenerator) => {
                 result.generateStaticContainers = (locationBase: ILocationBase, staticAmmoDist: Record<string, IStaticAmmoDetails[]>) => {
                     return this.generateStaticContainers(locationBase, staticAmmoDist);
+                }
+            }, { frequency: "Always" });
+
+            container.afterResolution("ItemHelper", (_t, result: ItemHelper) => {
+                result.fillMagazineWithRandomCartridge = (
+                    magazine: Item[],
+                    magTemplate: ITemplateItem,
+                    staticAmmoDist: Record<string, IStaticAmmoDetails[]>,
+                    caliber: string = undefined,
+                    minSizePercent = 0.25,
+                    weapon: ITemplateItem = null
+                ) => {
+                    return this.fillMagazineWithRandomCartridge(
+                        magazine, 
+                        magTemplate, 
+                        staticAmmoDist, 
+                        caliber, 
+                        minSizePercent, 
+                        weapon
+                    );
                 }
             }, { frequency: "Always" });
         }
@@ -66,6 +90,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         this.locations.set("Lighthouse", "lighthouse");
         this.locations.set("Streets of Tarkov", "tarkovstreets");
         this.locations.set("Sandbox", "sandbox");
+        //this.statics = new Map<string, IStaticContainer>();
         this.staticAmmoDists = new Map<string, Record<string, IStaticAmmoDetails[]>>();
         this.staticLootDists = new Map<string, Record<string, IStaticLootDetails>>();
 
@@ -127,6 +152,9 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
                     fs.readFileSync(`${this.dbPath}/${locationId}/staticContainers.json`, "utf-8")
                 );
             }
+            location.statics = this.jsonUtil.deserialize(
+                fs.readFileSync(`${this.dbPath}/${locationId}/statics.json`, "utf-8")
+            )
 
             // Generate staticLootDist list
             if (this.config.changeStaticLoot) {
@@ -156,12 +184,15 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
             // This will prevent spawning without significant overhead.
             if ( spawnPoint.itemDistribution.length === 0) {
                 spawnPoint.template.IsAlwaysSpawn = false;
+                // This isn't necessary but prevents a warn for skipping an empty spawn.
+                spawnPoint.probability = 0;
             }
         }
     }
 
     public loadStaticLoot(locationId: string): void {
         const location: ILocation = this.database.locations[locationId];
+
         const staticAmmoDist: Record<string, IStaticAmmoDetails[]> = this.jsonUtil.deserialize(
             fs.readFileSync(`${this.dbPath}/${locationId}/staticAmmo.json`, "utf-8"), `${locationId}/staticAmmo.json`
         );
@@ -172,6 +203,13 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         }
         // location.base.Id uses different capitalization than the file path ids.
         this.staticAmmoDists.set(location.base.Id, staticAmmoDist);
+
+        /*
+        const newStatic: IStaticContainer = this.jsonUtil.deserialize(
+            fs.readFileSync(`${this.dbPath}/${locationId}/statics.json`, "utf-8"), `${locationId}/statics.json`
+        );
+        this.statics.set(location.base.Id, newStatic);
+        */
 
         const staticLootDist: Record<string, IStaticLootDetails> = this.jsonUtil.deserialize(
             fs.readFileSync(`${this.dbPath}/${locationId}/staticLoot.json`, "utf-8"), `${locationId}/staticLoot.json`
@@ -185,6 +223,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         this.staticLootDists.set(location.base.Id, staticLootDist);
     }
 
+    // LocationGenerator method replacement
     public generateStaticContainers(locationBase: ILocationBase, staticAmmoDist: Record<string, IStaticAmmoDetails[]>): SpawnpointTemplate[] {
         const locationGenerator = Mod.container.resolve<LocationGenerator>("LocationGenerator");
         const jsonUtil = Mod.container.resolve<JsonUtil>("JsonUtil");
@@ -232,8 +271,9 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         let staticContainerCount = 0;
     
         // Find all 100% spawn containers
-        const staticLootDist: Record<string, IStaticLootDetails> = this.staticLootDists.get(locationBase.Id);
         // const staticLootDist  = db.loot.staticLoot;
+        const staticLootDist: Record<string, IStaticLootDetails> = this.staticLootDists.get(locationBase.Id);
+        
         const guaranteedContainers = locationGenerator.getGuaranteedContainers(allStaticContainersOnMapClone);
         staticContainerCount += guaranteedContainers.length;
     
@@ -281,6 +321,7 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
     
         // Group containers by their groupId
         const staticContainerGroupData: IStaticContainer = db.locations[locationId].statics;
+        // const staticContainerGroupData: IStaticContainer = this.statics.get(locationBase.Id);
         if (!staticContainerGroupData) {
             this.logger.warning(`Map: ${locationId} lacks a statics file, skipping container generation.`);
     
@@ -362,6 +403,36 @@ class Mod implements IPreAkiLoadMod, IPostDBLoadMod {
         );
     
         return result;
+    }
+
+    // ItemHelper method replacement
+    public fillMagazineWithRandomCartridge(
+        magazine: Item[],
+        magTemplate: ITemplateItem,
+        staticAmmoDist: Record<string, IStaticAmmoDetails[]>,
+        caliber: string = undefined,
+        minSizePercent = 0.25,
+        weapon: ITemplateItem = null
+    ): void {
+        const itemHelper = Mod.container.resolve<ItemHelper>("ItemHelper");
+        let chosenCaliber = caliber || itemHelper.getRandomValidCaliber(magTemplate);
+
+        // Edge case for the Klin pp-9, it has a typo in its ammo caliber
+        if (chosenCaliber === "Caliber9x18PMM") {
+            chosenCaliber = "Caliber9x18PM";
+        }
+
+        // Chose a randomly weighted cartridge that fits
+        const cartridgeTpl = itemHelper.drawAmmoTpl(
+            chosenCaliber,
+            staticAmmoDist,
+            weapon?._props.defAmmo,
+            weapon?._props?.Chambers[0]?._props?.filters[0]?.Filter
+        );
+        if (!cartridgeTpl) {
+            return;
+        }
+        itemHelper.fillMagazineWithCartridge(magazine, magTemplate, cartridgeTpl, minSizePercent);
     }
 }
 
